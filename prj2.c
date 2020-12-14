@@ -5,11 +5,10 @@
 #include <time.h>
 #include <unistd.h>
 
-// Используем для каждого типа курильщика и для посредника свой семафор
-sem_t* put_sem;
+sem_t* tobacco_and_matches_sem;
 sem_t* paper_and_tobacco_sem;
 sem_t* paper_and_matches_sem;
-sem_t* tobacco_and_matches_sem;
+sem_t* put_sem;
 
 int HAS_TOBACCO = 0;
 int HAS_PAPER = 1;
@@ -17,10 +16,9 @@ int HAS_MATCHES = 2;
 
 int total_smokes = 0;
 int smoke_seconds = 1;
-char* is_smoking = "and is smoking";
 char* finished_smoking = "has finished smoking";
+char* is_smoking = "and is smoking";
 
-// Функция для потока-курильщика
 void* smoker(void* args) {
     int type = *((int*) args);
     sem_t* sem;
@@ -43,9 +41,9 @@ void* smoker(void* args) {
         if (sem_wait(sem) != 0 || total_smokes >= 10) {
             continue;
         }
-        // нет гонки, так как курят все по-очереди
+        // здесь курят все по-очереди
         printf("%s %s %s\n", name, got_components, is_smoking);
-        // в качестве имитации курения просто засыпаем на 1с
+        // будем на 1 секунду засыпать, чтобы показать процесс крурения
         sleep(smoke_seconds);
         printf("%s %s\n", name, finished_smoking);
         sem_post(put_sem);
@@ -53,7 +51,6 @@ void* smoker(void* args) {
     return NULL;
 }
 
-// Функция для потока-посредника
 void* middleman(void* args) {
     for (; total_smokes < 10; ++total_smokes) {
         if (sem_wait(put_sem) != 0) {
@@ -79,11 +76,6 @@ void* middleman(void* args) {
 
 int main() {
     srand(time(NULL));
-    // Для универсальной POSIX-совместимости используются именованные семафоры.
-    // Неименованные семаформы (созданные через sem_init) не работают на MacOS.
-    // Если семафор с таким именем уже используется, отвяжем его имя и создадим новый.
-    // При этом используемые семафоры не удаляются, пока не закроются,
-    // так что sem_unlink не вляет на запущенные экземпляры программы.
     if ((put_sem = sem_open("put_sem", O_CREAT | O_EXCL, 0660, 1)) == SEM_FAILED) {
         sem_unlink("put_sem");
         put_sem = sem_open("put_sem", O_CREAT | O_EXCL, 0660, 1);
@@ -103,7 +95,6 @@ int main() {
 
     pthread_t threads[4];
     pthread_create(threads + 0, NULL, middleman, NULL);
-    // В качестве аргументов передаем целое число с индентификатором типа курильщика
     pthread_create(threads + 1, NULL, smoker, &(HAS_MATCHES));
     pthread_create(threads + 2, NULL, smoker, &(HAS_PAPER));
     pthread_create(threads + 3, NULL, smoker, &(HAS_TOBACCO));
